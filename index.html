@@ -235,8 +235,13 @@
             });
         }
 
-//Step 3: Compare User's Answer with the Expected Answer
+// Step 3: Compare User's Answer with the Expected Answer
         function compareAnswers(userAnswer) {
+            if (!userAnswer || !expectedAnswer) {
+                console.error('Error: userAnswer or expectedAnswer is null or undefined.');
+                return; // Exit the function early if either value is null or undefined
+            }
+
             const similarityScore = calculateSimilarity(userAnswer, expectedAnswer);
             console.log('Similarity score:', similarityScore);
             if (similarityScore > 0.7) { // Assuming a threshold of 0.7 for similarity
@@ -247,12 +252,17 @@
         }
 
         function calculateSimilarity(answer1, answer2) {
+            if (!answer1 || !answer2) {
+                return 0; // Return a similarity score of 0 if either answer is null or undefined
+            }
+
             // Simple similarity check (you can replace this with a more complex algorithm)
             const words1 = answer1.toLowerCase().split(' ');
             const words2 = answer2.toLowerCase().split(' ');
             const commonWords = words1.filter(word => words2.includes(word));
             return commonWords.length / Math.max(words1.length, words2.length);
         }
+
 
 //Step 4: End AR Experience and Display Feedback
         function endARExperience(feedback) {
