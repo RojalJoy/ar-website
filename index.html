@@ -63,6 +63,106 @@
         let rotateRightButton = null;
         let currentScale = 0.05;
         let recognition;
+//Step 1: Fetch a Random Question and Expected Answer
+let currentQuestion = null;
+        let expectedAnswer = null;
+
+        function fetchRandomQuestion() {
+            db.collection("QnA").get().then((querySnapshot) => {
+                const docs = querySnapshot.docs;
+                if (docs.length > 0) {
+                    const randomDoc = docs[Math.floor(Math.random() * docs.length)];
+                    currentQuestion = randomDoc.data().question;
+                    expectedAnswer = randomDoc.data().expected_answer;
+                    console.log('Random question:', currentQuestion);
+                    console.log('Expected answer:', expectedAnswer);
+                    speakText(currentQuestion); // Ask the question to the user
+                }
+            }).catch((error) => {
+                console.error("Error retrieving random question:", error);
+            });
+        }
+
+//Step 2: Record the User's Answer
+        function setupSpeechRecognition() {
+            recognition = new (window.SpeechRecognition || window.webkitSpeechRecognition)();
+            recognition.lang = 'en-US';
+            recognition.interimResults = false;
+            recognition.maxAlternatives = 1;
+
+            recognition.onresult = (event) => {
+                const userAnswer = event.results[0][0].transcript;
+                console.log('User answer:', userAnswer);
+                sendAnswerToFirebase(userAnswer); // Record user's answer
+                compareAnswers(userAnswer); // Compare with the expected answer
+            };
+
+            recognition.onspeechend = () => {
+                recognition.stop();
+            };
+
+            recognition.onerror = (event) => {
+                console.error('Speech recognition error:', event.error);
+            };
+
+            recognition.onend = () => {
+                recognition.start(); // Continue listening for user input
+            };
+
+            recognition.start();
+        }
+
+        function sendAnswerToFirebase(answer) {
+            db.collection("answers").add({
+                speechResult: answer,
+                timestamp: firebase.firestore.FieldValue.serverTimestamp()
+            }).then((docRef) => {
+                console.log("Answer recorded with ID: ", docRef.id);
+            }).catch((error) => {
+                console.error("Error recording answer: ", error);
+            });
+        }
+
+// Step 3: Compare User's Answer with the Expected Answer
+        function compareAnswers(userAnswer) {
+            if (!userAnswer || !expectedAnswer) {
+                console.error('Error: userAnswer or expectedAnswer is null or undefined.');
+                return; // Exit the function early if either value is null or undefined
+            }
+
+            const similarityScore = calculateSimilarity(userAnswer, expectedAnswer);
+            console.log('Similarity score:', similarityScore);
+            if (similarityScore > 0.7) { // Assuming a threshold of 0.7 for similarity
+                endARExperience("Great job! Your answer was quite accurate.");
+            } else {
+                endARExperience("Keep practicing! Your answer needs improvement.");
+            }
+        }
+
+        function calculateSimilarity(answer1, answer2) {
+            if (!answer1 || !answer2) {
+                return 0; // Return a similarity score of 0 if either answer is null or undefined
+            }
+
+            // Simple similarity check (you can replace this with a more complex algorithm)
+            const words1 = answer1.toLowerCase().split(' ');
+            const words2 = answer2.toLowerCase().split(' ');
+            const commonWords = words1.filter(word => words2.includes(word));
+            return commonWords.length / Math.max(words1.length, words2.length);
+        }
+
+
+//Step 4: End AR Experience and Display Feedback
+        function endARExperience(feedback) {
+            console.log('Ending AR experience. Feedback:', feedback);
+            // Stop the camera (end the AR session)
+            if (renderer.xr.isPresenting) {
+                const session = renderer.xr.getSession();
+                session.end();
+            }
+            // Display feedback (e.g., on the web page or in a dialog box)
+            alert(feedback);
+        }
 
         // Initialize the scene
         init();
@@ -191,106 +291,106 @@
         //     });
         // }
 
-//Step 1: Fetch a Random Question and Expected Answer
-        let currentQuestion = null;
-        let expectedAnswer = null;
+// //Step 1: Fetch a Random Question and Expected Answer
+//         let currentQuestion = null;
+//         let expectedAnswer = null;
 
-        function fetchRandomQuestion() {
-            db.collection("QnA").get().then((querySnapshot) => {
-                const docs = querySnapshot.docs;
-                if (docs.length > 0) {
-                    const randomDoc = docs[Math.floor(Math.random() * docs.length)];
-                    currentQuestion = randomDoc.data().question;
-                    expectedAnswer = randomDoc.data().expected_answer;
-                    console.log('Random question:', currentQuestion);
-                    console.log('Expected answer:', expectedAnswer);
-                    speakText(currentQuestion); // Ask the question to the user
-                }
-            }).catch((error) => {
-                console.error("Error retrieving random question:", error);
-            });
-        }
+//         function fetchRandomQuestion() {
+//             db.collection("QnA").get().then((querySnapshot) => {
+//                 const docs = querySnapshot.docs;
+//                 if (docs.length > 0) {
+//                     const randomDoc = docs[Math.floor(Math.random() * docs.length)];
+//                     currentQuestion = randomDoc.data().question;
+//                     expectedAnswer = randomDoc.data().expected_answer;
+//                     console.log('Random question:', currentQuestion);
+//                     console.log('Expected answer:', expectedAnswer);
+//                     speakText(currentQuestion); // Ask the question to the user
+//                 }
+//             }).catch((error) => {
+//                 console.error("Error retrieving random question:", error);
+//             });
+//         }
 
-//Step 2: Record the User's Answer
-        function setupSpeechRecognition() {
-            recognition = new (window.SpeechRecognition || window.webkitSpeechRecognition)();
-            recognition.lang = 'en-US';
-            recognition.interimResults = false;
-            recognition.maxAlternatives = 1;
+// //Step 2: Record the User's Answer
+//         function setupSpeechRecognition() {
+//             recognition = new (window.SpeechRecognition || window.webkitSpeechRecognition)();
+//             recognition.lang = 'en-US';
+//             recognition.interimResults = false;
+//             recognition.maxAlternatives = 1;
 
-            recognition.onresult = (event) => {
-                const userAnswer = event.results[0][0].transcript;
-                console.log('User answer:', userAnswer);
-                sendAnswerToFirebase(userAnswer); // Record user's answer
-                compareAnswers(userAnswer); // Compare with the expected answer
-            };
+//             recognition.onresult = (event) => {
+//                 const userAnswer = event.results[0][0].transcript;
+//                 console.log('User answer:', userAnswer);
+//                 sendAnswerToFirebase(userAnswer); // Record user's answer
+//                 compareAnswers(userAnswer); // Compare with the expected answer
+//             };
 
-            recognition.onspeechend = () => {
-                recognition.stop();
-            };
+//             recognition.onspeechend = () => {
+//                 recognition.stop();
+//             };
 
-            recognition.onerror = (event) => {
-                console.error('Speech recognition error:', event.error);
-            };
+//             recognition.onerror = (event) => {
+//                 console.error('Speech recognition error:', event.error);
+//             };
 
-            recognition.onend = () => {
-                recognition.start(); // Continue listening for user input
-            };
+//             recognition.onend = () => {
+//                 recognition.start(); // Continue listening for user input
+//             };
 
-            recognition.start();
-        }
+//             recognition.start();
+//         }
 
-        function sendAnswerToFirebase(answer) {
-            db.collection("answers").add({
-                speechResult: answer,
-                timestamp: firebase.firestore.FieldValue.serverTimestamp()
-            }).then((docRef) => {
-                console.log("Answer recorded with ID: ", docRef.id);
-            }).catch((error) => {
-                console.error("Error recording answer: ", error);
-            });
-        }
+//         function sendAnswerToFirebase(answer) {
+//             db.collection("answers").add({
+//                 speechResult: answer,
+//                 timestamp: firebase.firestore.FieldValue.serverTimestamp()
+//             }).then((docRef) => {
+//                 console.log("Answer recorded with ID: ", docRef.id);
+//             }).catch((error) => {
+//                 console.error("Error recording answer: ", error);
+//             });
+//         }
 
-// Step 3: Compare User's Answer with the Expected Answer
-        function compareAnswers(userAnswer) {
-            if (!userAnswer || !expectedAnswer) {
-                console.error('Error: userAnswer or expectedAnswer is null or undefined.');
-                return; // Exit the function early if either value is null or undefined
-            }
+// // Step 3: Compare User's Answer with the Expected Answer
+//         function compareAnswers(userAnswer) {
+//             if (!userAnswer || !expectedAnswer) {
+//                 console.error('Error: userAnswer or expectedAnswer is null or undefined.');
+//                 return; // Exit the function early if either value is null or undefined
+//             }
 
-            const similarityScore = calculateSimilarity(userAnswer, expectedAnswer);
-            console.log('Similarity score:', similarityScore);
-            if (similarityScore > 0.7) { // Assuming a threshold of 0.7 for similarity
-                endARExperience("Great job! Your answer was quite accurate.");
-            } else {
-                endARExperience("Keep practicing! Your answer needs improvement.");
-            }
-        }
+//             const similarityScore = calculateSimilarity(userAnswer, expectedAnswer);
+//             console.log('Similarity score:', similarityScore);
+//             if (similarityScore > 0.7) { // Assuming a threshold of 0.7 for similarity
+//                 endARExperience("Great job! Your answer was quite accurate.");
+//             } else {
+//                 endARExperience("Keep practicing! Your answer needs improvement.");
+//             }
+//         }
 
-        function calculateSimilarity(answer1, answer2) {
-            if (!answer1 || !answer2) {
-                return 0; // Return a similarity score of 0 if either answer is null or undefined
-            }
+//         function calculateSimilarity(answer1, answer2) {
+//             if (!answer1 || !answer2) {
+//                 return 0; // Return a similarity score of 0 if either answer is null or undefined
+//             }
 
-            // Simple similarity check (you can replace this with a more complex algorithm)
-            const words1 = answer1.toLowerCase().split(' ');
-            const words2 = answer2.toLowerCase().split(' ');
-            const commonWords = words1.filter(word => words2.includes(word));
-            return commonWords.length / Math.max(words1.length, words2.length);
-        }
+//             // Simple similarity check (you can replace this with a more complex algorithm)
+//             const words1 = answer1.toLowerCase().split(' ');
+//             const words2 = answer2.toLowerCase().split(' ');
+//             const commonWords = words1.filter(word => words2.includes(word));
+//             return commonWords.length / Math.max(words1.length, words2.length);
+//         }
 
 
-//Step 4: End AR Experience and Display Feedback
-        function endARExperience(feedback) {
-            console.log('Ending AR experience. Feedback:', feedback);
-            // Stop the camera (end the AR session)
-            if (renderer.xr.isPresenting) {
-                const session = renderer.xr.getSession();
-                session.end();
-            }
-            // Display feedback (e.g., on the web page or in a dialog box)
-            alert(feedback);
-        }
+// //Step 4: End AR Experience and Display Feedback
+//         function endARExperience(feedback) {
+//             console.log('Ending AR experience. Feedback:', feedback);
+//             // Stop the camera (end the AR session)
+//             if (renderer.xr.isPresenting) {
+//                 const session = renderer.xr.getSession();
+//                 session.end();
+//             }
+//             // Display feedback (e.g., on the web page or in a dialog box)
+//             alert(feedback);
+//         }
 
         // let hasSpoken = false; // Add this flag to track if the AR has spoke
  
