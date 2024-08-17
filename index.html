@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>AR Mock Interview</title>
+    <title>Simple AR Example</title>
     <style>
         body {
             margin: 0;
@@ -63,8 +63,6 @@
         let rotateRightButton = null;
         let currentScale = 0.05;
         let recognition;
-        let hasSpoken = false; // To track if the AR has spoken
-        let question, expectedAnswer;
 
         // Initialize the scene
         init();
@@ -131,21 +129,12 @@
 
             // Add a window resize event listener
             window.addEventListener('resize', onWindowResize, false);
+
+            // Initialize speech recognition
+            setupSpeechRecognition();
         }
 
-        async function fetchRandomQuestion() {
-            const querySnapshot = await db.collection("QnA").get();
-            const docs = querySnapshot.docs;
-            if (docs.length > 0) {
-                const randomDoc = docs[Math.floor(Math.random() * docs.length)];
-                question = randomDoc.data().question;
-                expectedAnswer = randomDoc.data().expected_answer;
-                console.log('Question:', question);
-                console.log('Expected Answer:', expectedAnswer);
-            }
-        }
-
-        async function setupSpeechRecognition() {
+        function setupSpeechRecognition() {
             console.log('Setting up speech recognition...');
             recognition = new (window.SpeechRecognition || window.webkitSpeechRecognition)();
             recognition.lang = 'en-US';
@@ -156,30 +145,108 @@
                 console.log('Speech recognition started.');
             };
 
-            recognition.onresult = async (event) => {
+            recognition.onresult = (event) => {
                 const speechResult = event.results[0][0].transcript;
                 console.log('Speech result:', speechResult);
+                // Send the text to the Firebase
+                sendTextToFirebase(speechResult);
+                // Make the model speak
+                speakText(speechResult);
+            };
 
-                // Send the text to Firebase
-                const docRef = await db.collection("answers").add({
-                    speechResult: speechResult,
-                    timestamp: firebase.firestore.FieldValue.serverTimestamp()
-                });
-                console.log("Document written with ID:", docRef.id);
+            recognition.onspeechend = () => {
+                console.log("SPeech ending after 1 min")
+                delay(60000)
+                console.log('Speech ended.');
+                recognition.stop();
+            };
 
-                // Compare with expected answer
-                const similarity = compareAnswers(expectedAnswer, speechResult);
-                console.log('Similarity Score:', similarity);
+            recognition.onerror = (event) => {
+                console.error('Speech recognition error:', event.error);
+            };
 
-                // Provide feedback and stop AR if necessary
-                if (similarity > 0.5) {
-                    speakText(`Good job! Your answer is ${Math.round(similarity * 100)}% similar.`);
-                } else {
-                    speakText(`Your answer is only ${Math.round(similarity * 100)}% similar. Keep practicing!`);
+            recognition.onend = () => {
+                console.log('Speech recognition service disconnected. Restarting...');
+                recognition.start();
+            };
+
+            recognition.start();
+
+
+        }
+
+        function sendTextToFirebase(text) {
+            db.collection("Questions").add({
+                speechResult: text,
+                timestamp: firebase.firestore.FieldValue.serverTimestamp()
+            }).then((docRef) => {
+                console.log("Document written with ID: ", docRef.id);
+            }).catch((error) => {
+                console.error("Error adding document: ", error);
+            });
+        }
+
+        function onWindowResize() {
+            console.log('Window resized.');
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        }
+
+        // function startReadingDescriptions() {
+        //     if (!model) return;
+
+        //     const intervalId = setInterval(() => {
+        //         getRandomDescriptionAndSpeak();
+        //     }, 20000); // 20000 milliseconds = 20 seconds
+        // }
+
+        // function getRandomDescriptionAndSpeak() {
+        //     db.collection("Deep").get().then((querySnapshot) => {
+        //         const docs = querySnapshot.docs;
+        //         if (docs.length > 0) {
+        //             const randomDoc = docs[Math.floor(Math.random() * docs.length)];
+        //             const description = randomDoc.data().DESCRIPTION;
+        //             console.log('Random description:', description);
+        //             speakText(description);
+        //         }
+        //     }).catch((error) => {
+        //         console.error("Error retrieving random description:", error);
+        //     });
+        // }
+
+//Step 1: Fetch a Random Question and Expected Answer
+        let currentQuestion = null;
+        let expectedAnswer = null;
+
+        function fetchRandomQuestion() {
+            db.collection("QnA").get().then((querySnapshot) => {
+                const docs = querySnapshot.docs;
+                if (docs.length > 0) {
+                    const randomDoc = docs[Math.floor(Math.random() * docs.length)];
+                    currentQuestion = randomDoc.data().question;
+                    expectedAnswer = randomDoc.data().expected_answer;
+                    console.log('Random question:', currentQuestion);
+                    console.log('Expected answer:', expectedAnswer);
+                    speakText(currentQuestion); // Ask the question to the user
                 }
+            }).catch((error) => {
+                console.error("Error retrieving random question:", error);
+            });
+        }
 
-                // Stop AR session
-                stopARSession();
+//Step 2: Record the User's Answer
+        function setupSpeechRecognition() {
+            recognition = new (window.SpeechRecognition || window.webkitSpeechRecognition)();
+            recognition.lang = 'en-US';
+            recognition.interimResults = false;
+            recognition.maxAlternatives = 1;
+
+            recognition.onresult = (event) => {
+                const userAnswer = event.results[0][0].transcript;
+                console.log('User answer:', userAnswer);
+                sendAnswerToFirebase(userAnswer); // Record user's answer
+                compareAnswers(userAnswer); // Compare with the expected answer
             };
 
             recognition.onspeechend = () => {
@@ -191,86 +258,103 @@
             };
 
             recognition.onend = () => {
-                console.log('Speech recognition service disconnected.');
+                recognition.start(); // Continue listening for user input
             };
 
             recognition.start();
         }
 
-        function compareAnswers(expected, actual) {
-            // Simple similarity comparison (e.g., Levenshtein distance or other string similarity measure)
-            // This is a placeholder function, replace with a proper algorithm
-            const expectedWords = expected.toLowerCase().split(' ');
-            const actualWords = actual.toLowerCase().split(' ');
-
-            const matches = actualWords.filter(word => expectedWords.includes(word)).length;
-            return matches / expectedWords.length;
+        function sendAnswerToFirebase(answer) {
+            db.collection("answers").add({
+                speechResult: answer,
+                timestamp: firebase.firestore.FieldValue.serverTimestamp()
+            }).then((docRef) => {
+                console.log("Answer recorded with ID: ", docRef.id);
+            }).catch((error) => {
+                console.error("Error recording answer: ", error);
+            });
         }
 
-        function stopARSession() {
-            const session = renderer.xr.getSession();
-            if (session) {
-                session.end().then(() => {
-                    console.log('AR session ended.');
-                    // You can show feedback here or redirect to another page
-                    alert('AR session ended. Feedback: Check the console for details.');
-                });
+//Step 3: Compare User's Answer with the Expected Answer
+        function compareAnswers(userAnswer) {
+            const similarityScore = calculateSimilarity(userAnswer, expectedAnswer);
+            console.log('Similarity score:', similarityScore);
+            if (similarityScore > 0.7) { // Assuming a threshold of 0.7 for similarity
+                endARExperience("Great job! Your answer was quite accurate.");
+            } else {
+                endARExperience("Keep practicing! Your answer needs improvement.");
             }
         }
 
-        function onWindowResize() {
-            console.log('Window resized.');
-            camera.aspect = window.innerWidth / window.innerHeight;
-            camera.updateProjectionMatrix();
-            renderer.setSize(window.innerWidth, window.innerHeight);
+        function calculateSimilarity(answer1, answer2) {
+            // Simple similarity check (you can replace this with a more complex algorithm)
+            const words1 = answer1.toLowerCase().split(' ');
+            const words2 = answer2.toLowerCase().split(' ');
+            const commonWords = words1.filter(word => words2.includes(word));
+            return commonWords.length / Math.max(words1.length, words2.length);
         }
 
+//Step 4: End AR Experience and Display Feedback
+        function endARExperience(feedback) {
+            console.log('Ending AR experience. Feedback:', feedback);
+            // Stop the camera (end the AR session)
+            if (renderer.xr.isPresenting) {
+                const session = renderer.xr.getSession();
+                session.end();
+            }
+            // Display feedback (e.g., on the web page or in a dialog box)
+            alert(feedback);
+        }
+
+        let hasSpoken = false; // Add this flag to track if the AR has spoke
+        
         function onSelect() {
-            console.log('Controller select event.');
-            if (reticle.visible && model) {
-                console.log('Placing model at reticle position.');
-                model.position.setFromMatrixPosition(reticle.matrix);
-                model.visible = true;
-                reticle.visible = false;
-                setButtonVisibility(true); // Show buttons when model is placed
-                positionButtons(reticle.matrix);
+        console.log('Controller select event.');
+        if (reticle.visible && model) {
+            console.log('Placing model at reticle position.');
+            model.position.setFromMatrixPosition(reticle.matrix);
+            model.visible = true;
+            reticle.visible = false;
+            setButtonVisibility(true); // Show buttons when model is placed
+            positionButtons(reticle.matrix);
 
-                if (!hasSpoken) {
-                    fetchRandomQuestion().then(() => {
-                        speakText(question);
-                        setupSpeechRecognition();
-                    });
-                    hasSpoken = true;
-                }
+            if (!hasSpoken) { // Check if the AR has already spoken
+                speakText("Starting Your Mock Interview");
+                hasSpoken = true; // Set the flag to true after speaking
+                fetchRandomQuestion(); // Ask the first question
+
+                 // Start speech recognition now that the model is loaded
+                setupSpeechRecognition();
             }
         }
+    }
 
         function createButtons() {
             const buttonGeometry = new THREE.BoxGeometry(0.1, 0.05, 0.01);
-            const buttonMaterial = new THREE.MeshBasicMaterial({ color: 0x0000ff });
+            const increaseMaterial = new THREE.MeshBasicMaterial({ color: 0x00ff00 });
+            const decreaseMaterial = new THREE.MeshBasicMaterial({ color: 0xff0000 });
+            const rotateLeftMaterial = new THREE.MeshBasicMaterial({ color: 0x0000ff });
+            const rotateRightMaterial = new THREE.MeshBasicMaterial({ color: 0xffff00 });
 
-            increaseButton = new THREE.Mesh(buttonGeometry, buttonMaterial);
-            decreaseButton = new THREE.Mesh(buttonGeometry, buttonMaterial);
-            rotateLeftButton = new THREE.Mesh(buttonGeometry, buttonMaterial);
-            rotateRightButton = new THREE.Mesh(buttonGeometry, buttonMaterial);
-
-            increaseButton.name = 'increase';
-            decreaseButton.name = 'decrease';
-            rotateLeftButton.name = 'rotateLeft';
-            rotateRightButton.name = 'rotateRight';
-
+            increaseButton = new THREE.Mesh(buttonGeometry, increaseMaterial);
+            increaseButton.visible = false; // Initially hide the button
+            increaseButton.userData = { isIncreaseButton: true };
             scene.add(increaseButton);
+
+            decreaseButton = new THREE.Mesh(buttonGeometry, decreaseMaterial);
+            decreaseButton.visible = false; // Initially hide the button
+            decreaseButton.userData = { isDecreaseButton: true };
             scene.add(decreaseButton);
+
+            rotateLeftButton = new THREE.Mesh(buttonGeometry, rotateLeftMaterial);
+            rotateLeftButton.visible = false; // Initially hide the button
+            rotateLeftButton.userData = { isRotateLeftButton: true };
             scene.add(rotateLeftButton);
+
+            rotateRightButton = new THREE.Mesh(buttonGeometry, rotateRightMaterial);
+            rotateRightButton.visible = false; // Initially hide the button
+            rotateRightButton.userData = { isRotateRightButton: true };
             scene.add(rotateRightButton);
-
-            setButtonVisibility(false);
-
-            // Add click event listeners for buttons
-            increaseButton.addEventListener('click', () => adjustScale(1.1));
-            decreaseButton.addEventListener('click', () => adjustScale(0.9));
-            rotateLeftButton.addEventListener('click', () => rotateModel(-Math.PI / 16));
-            rotateRightButton.addEventListener('click', () => rotateModel(Math.PI / 16));
         }
 
         function setButtonVisibility(visible) {
@@ -281,24 +365,47 @@
         }
 
         function positionButtons(matrix) {
-            const position = new THREE.Vector3();
-            position.setFromMatrixPosition(matrix);
+            const position = new THREE.Vector3().setFromMatrixPosition(matrix);
+            increaseButton.position.copy(position);
+            increaseButton.position.y += 0.1; // Position the increase button above the model
+            increaseButton.position.x -= 0.1; // Position to the far left
 
-            const offset = 0.2;
+            decreaseButton.position.copy(position);
+            decreaseButton.position.y += 0.1; // Position the decrease button above the model
+            decreaseButton.position.x += 0.1; // Position to the far right
 
-            increaseButton.position.set(position.x - offset, position.y, position.z);
-            decreaseButton.position.set(position.x + offset, position.y, position.z);
-            rotateLeftButton.position.set(position.x, position.y, position.z - offset);
-            rotateRightButton.position.set(position.x, position.y, position.z + offset);
+            rotateLeftButton.position.copy(position);
+            rotateLeftButton.position.y += 0.25; // Position the rotate left button above the model
+            rotateLeftButton.position.x -= 0.05; // Position to the left
+
+            rotateRightButton.position.copy(position);
+            rotateRightButton.position.y += 0.25; // Position the rotate right button above the model
+            rotateRightButton.position.x += 0.1; // Position to the right
         }
 
-        function adjustScale(factor) {
-            currentScale *= factor;
-            model.scale.set(currentScale, currentScale, currentScale);
+        function onResizeButtonClick(increase) {
+            if (increase) {
+                currentScale += 0.01;
+            } else {
+                currentScale = Math.max(0.01, currentScale - 0.01);
+            }
+            if (model) {
+                model.scale.set(currentScale, currentScale, currentScale);
+                console.log('Resized model to scale:', currentScale);
+            }
         }
 
-        function rotateModel(angle) {
-            model.rotation.y += angle;
+        function onRotateButtonClick(clockwise) {
+            if (model) {
+                const rotationAmount = clockwise ? -Math.PI / 8 : Math.PI / 8;
+                model.rotation.y += rotationAmount;
+                console.log('Rotated model by:', rotationAmount);
+            }
+        }
+
+        function speakText(text) {
+            const utterance = new SpeechSynthesisUtterance(text);
+            window.speechSynthesis.speak(utterance);
         }
 
         function animate() {
@@ -306,15 +413,13 @@
         }
 
         function render(timestamp, frame) {
-            if (model) {
-                mixer.update(0.01);
-            }
-
-            if (hitTestSourceRequested === false) {
+            if (frame) {
+                const referenceSpace = renderer.xr.getReferenceSpace();
                 const session = renderer.xr.getSession();
-                if (session) {
-                    session.requestReferenceSpace('viewer').then(referenceSpace => {
-                        session.requestHitTestSource({ space: referenceSpace }).then(source => {
+
+                if (hitTestSourceRequested === false) {
+                    session.requestReferenceSpace('viewer').then((referenceSpace) => {
+                        session.requestHitTestSource({ space: referenceSpace }).then((source) => {
                             hitTestSource = source;
                         });
                     });
@@ -326,17 +431,13 @@
 
                     hitTestSourceRequested = true;
                 }
-            }
 
-            if (hitTestSource && frame) {
-                const referenceSpace = renderer.xr.getReferenceSpace();
-                const viewerPose = frame.getViewerPose(referenceSpace);
-
-                if (viewerPose) {
+                if (hitTestSource) {
                     const hitTestResults = frame.getHitTestResults(hitTestSource);
 
-                    if (hitTestResults.length > 0) {
+                    if (hitTestResults.length) {
                         const hit = hitTestResults[0];
+
                         reticle.visible = true;
                         reticle.matrix.fromArray(hit.getPose(referenceSpace).transform.matrix);
                     } else {
@@ -345,16 +446,41 @@
                 }
             }
 
+            if (mixer) {
+                mixer.update(0.01);
+            }
+
             renderer.render(scene, camera);
         }
 
-        function speakText(text) {
-            const speech = new SpeechSynthesisUtterance(text);
-            speech.lang = 'en-US';
-            speech.volume = 100;
-            speech.rate = 1;
-            speech.pitch = 100;
-            window.speechSynthesis.speak(speech);
+        document.addEventListener('click', (event) => {
+            const intersects = getIntersects(event.clientX, event.clientY);
+            if (intersects.length > 0) {
+                const object = intersects[0].object;
+                if (object.userData.isIncreaseButton) {
+                    onResizeButtonClick(true);
+                  
+                } else if (object.userData.isDecreaseButton) {
+                    onResizeButtonClick(false);
+                   
+                } else if (object.userData.isRotateLeftButton) {
+                    onRotateButtonClick(false);
+                  
+                } else if (object.userData.isRotateRightButton) {
+                    onRotateButtonClick(true);
+                    
+                }
+            }
+        });
+
+        function getIntersects(x, y) {
+            const mouse = new THREE.Vector2();
+            mouse.x = (x / window.innerWidth) * 2 - 1;
+            mouse.y = -(y / window.innerHeight) * 2 + 1;
+
+            const raycaster = new THREE.Raycaster();
+            raycaster.setFromCamera(mouse, camera);
+            return raycaster.intersectObjects([increaseButton, decreaseButton, rotateLeftButton, rotateRightButton]);
         }
     </script>
 </body>
