@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Simple AR Example</title>
+    <title>AR Mock Interview</title>
     <style>
         body {
             margin: 0;
@@ -30,12 +30,9 @@
     <!-- Add Firebase SDKs -->
     <script src="https://www.gstatic.com/firebasejs/9.8.1/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.8.1/firebase-firestore-compat.js"></script>
-    <!-- Include the Pyodide library -->
-    <script src="https://cdn.jsdelivr.net/pyodide/v0.18.1/full/pyodide.js"></script>
 </head>
 <body>
     <div id="ar-container"></div>
-    <pre id="output"></pre>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script type="module">
         import * as THREE from 'three';
@@ -66,98 +63,12 @@
         let rotateRightButton = null;
         let currentScale = 0.05;
         let recognition;
+        let hasSpoken = false; // To track if the AR has spoken
+        let question, expectedAnswer;
 
-        async function runPythonCode(user_answer, expected_answer) {
-            let pyodide = await loadPyodide();
-            await pyodide.loadPackage(['scikit-learn']);
-
-            // Define Python code as a string
-            const pythonCode = `
-import time
-from sklearn.metrics.pairwise import cosine_similarity
-from sklearn.feature_extraction.text import TfidfVectorizer
-
-def calculate_similarity(user_response, expected_response):
-    vectorizer = TfidfVectorizer()
-    tfidf_matrix = vectorizer.fit_transform([user_response, expected_response])
-    similarity_score = cosine_similarity(tfidf_matrix[0:1], tfidf_matrix[1:2])
-    return similarity_score[0][0]
-
-def calculate_feedback_score(similarity_score, response_time, ideal_time=10):
-    time_score = max(0, 1 - abs(response_time - ideal_time) / ideal_time)
-    final_score = (similarity_score * 0.7) + (time_score * 0.3)
-    return final_score
-
-expected_answer = """${expected_answer}"""
-user_answer = """${user_answer}"""
-start_time = time.time()
-
-response_time = 5 # Use a fixed response time for testing purposes
-
-similarity_score = calculate_similarity(user_answer, expected_answer)
-feedback_score = calculate_feedback_score(similarity_score, response_time)
-
-# Output the results
-output = f"Similarity Score: {similarity_score}\\nResponse Time: {response_time} seconds\\nFeedback Score: {feedback_score}"
-output
-`;
-            // Run Python code and get output
-            let output = pyodide.runPython(pythonCode);
-            document.getElementById('output').innerText = output;
-            stopAR(); // Stop the AR experience and show feedback
-        }
-
-        function stopAR() {
-            const arContainer = document.getElementById('ar-container');
-            if (renderer.xr.getSession()) {
-                renderer.xr.getSession().end(); // End the AR session
-            }
-            arContainer.innerHTML = ''; // Clear the AR container
-            document.body.style.backgroundColor = '#000'; // Set background color to black
-        }
-
-        async function getLatestUserAnswer() {
-            const querySnapshot = await db.collection("answers").orderBy("timestamp", "desc").limit(1).get();
-            if (!querySnapshot.empty) {
-                return querySnapshot.docs[0].data().speechResult;
-            }
-            return null;
-        }
-
-        async function getRandomQuestionAndExpectedAnswer() {
-            const querySnapshot = await db.collection("QnA").get();
-            const docs = querySnapshot.docs;
-            if (docs.length > 0) {
-                const randomDoc = docs[Math.floor(Math.random() * docs.length)];
-                return {
-                    question: randomDoc.data().question,
-                    expectedAnswer: randomDoc.data().expected_answer
-                };
-            }
-            return null;
-        }
-
-        function sendTextToFirebase(text) {
-            db.collection("answers").add({
-                speechResult: text,
-                timestamp: firebase.firestore.FieldValue.serverTimestamp()
-            }).then((docRef) => {
-                console.log("Document written with ID: ", docRef.id);
-            }).catch((error) => {
-                console.error("Error adding document: ", error);
-            });
-        }
-
-        async function onQuestionAsked() {
-            const userAnswer = await getLatestUserAnswer();
-            if (userAnswer) {
-                const randomQuestion = await getRandomQuestionAndExpectedAnswer();
-                if (randomQuestion) {
-                    speakText(randomQuestion.question);
-                    runPythonCode(userAnswer, randomQuestion.expectedAnswer);
-                }
-            }
-        }
+        // Initialize the scene
+        init();
+        animate();
 
         function init() {
             console.log('Initializing scene...');
@@ -215,76 +126,179 @@ output
             reticle.visible = false;
             scene.add(reticle);
 
-            // Initialize speech recognition
-            setupSpeechRecognition();
+            // Create the resize and rotate buttons
+            createButtons();
+
+            // Add a window resize event listener
+            window.addEventListener('resize', onWindowResize, false);
         }
 
-        function setupSpeechRecognition() {
+        async function fetchRandomQuestion() {
+            const querySnapshot = await db.collection("QnA").get();
+            const docs = querySnapshot.docs;
+            if (docs.length > 0) {
+                const randomDoc = docs[Math.floor(Math.random() * docs.length)];
+                question = randomDoc.data().question;
+                expectedAnswer = randomDoc.data().expected_answer;
+                console.log('Question:', question);
+                console.log('Expected Answer:', expectedAnswer);
+            }
+        }
+
+        async function setupSpeechRecognition() {
             console.log('Setting up speech recognition...');
             recognition = new (window.SpeechRecognition || window.webkitSpeechRecognition)();
             recognition.lang = 'en-US';
             recognition.interimResults = false;
             recognition.maxAlternatives = 1;
 
-            recognition.onresult = function(event) {
-                const speechResult = event.results[0][0].transcript;
-                console.log('Speech recognized:', speechResult);
-
-                // Send the recognized speech to Firebase
-                sendTextToFirebase(speechResult);
-
-                // Display the recognized speech on the AR model
-                displayTextOnModel(speechResult);
-
-                // Process the answer when a question is asked
-                onQuestionAsked();
+            recognition.onstart = () => {
+                console.log('Speech recognition started.');
             };
 
-            recognition.onspeechend = function() {
+            recognition.onresult = async (event) => {
+                const speechResult = event.results[0][0].transcript;
+                console.log('Speech result:', speechResult);
+
+                // Send the text to Firebase
+                const docRef = await db.collection("answers").add({
+                    speechResult: speechResult,
+                    timestamp: firebase.firestore.FieldValue.serverTimestamp()
+                });
+                console.log("Document written with ID:", docRef.id);
+
+                // Compare with expected answer
+                const similarity = compareAnswers(expectedAnswer, speechResult);
+                console.log('Similarity Score:', similarity);
+
+                // Provide feedback and stop AR if necessary
+                if (similarity > 0.5) {
+                    speakText(`Good job! Your answer is ${Math.round(similarity * 100)}% similar.`);
+                } else {
+                    speakText(`Your answer is only ${Math.round(similarity * 100)}% similar. Keep practicing!`);
+                }
+
+                // Stop AR session
+                stopARSession();
+            };
+
+            recognition.onspeechend = () => {
                 recognition.stop();
             };
 
-            recognition.onerror = function(event) {
+            recognition.onerror = (event) => {
                 console.error('Speech recognition error:', event.error);
             };
+
+            recognition.onend = () => {
+                console.log('Speech recognition service disconnected.');
+            };
+
+            recognition.start();
         }
 
-        function speakText(text) {
-            const utterance = new SpeechSynthesisUtterance(text);
-            utterance.lang = 'en-US';
-            window.speechSynthesis.speak(utterance);
+        function compareAnswers(expected, actual) {
+            // Simple similarity comparison (e.g., Levenshtein distance or other string similarity measure)
+            // This is a placeholder function, replace with a proper algorithm
+            const expectedWords = expected.toLowerCase().split(' ');
+            const actualWords = actual.toLowerCase().split(' ');
+
+            const matches = actualWords.filter(word => expectedWords.includes(word)).length;
+            return matches / expectedWords.length;
         }
 
-        function displayTextOnModel(text) {
-            if (model) {
-                const textGeometry = new THREE.TextGeometry(text, {
-                    font: new THREE.FontLoader().load('fonts/helvetiker_regular.typeface.json'),
-                    size: 0.05,
-                    height: 0.01
+        function stopARSession() {
+            const session = renderer.xr.getSession();
+            if (session) {
+                session.end().then(() => {
+                    console.log('AR session ended.');
+                    // You can show feedback here or redirect to another page
+                    alert('AR session ended. Feedback: Check the console for details.');
                 });
-                const textMaterial = new THREE.MeshBasicMaterial({ color: 0x00ff00 });
-                const textMesh = new THREE.Mesh(textGeometry, textMaterial);
-                textMesh.position.set(0, 1, 0);
-                scene.add(textMesh);
-
-                // Automatically remove the text after 3 seconds
-                setTimeout(() => {
-                    scene.remove(textMesh);
-                    textGeometry.dispose();
-                    textMaterial.dispose();
-                }, 3000);
             }
+        }
+
+        function onWindowResize() {
+            console.log('Window resized.');
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
         }
 
         function onSelect() {
-            if (model) {
+            console.log('Controller select event.');
+            if (reticle.visible && model) {
+                console.log('Placing model at reticle position.');
+                model.position.setFromMatrixPosition(reticle.matrix);
                 model.visible = true;
-                console.log('Model displayed.');
+                reticle.visible = false;
+                setButtonVisibility(true); // Show buttons when model is placed
+                positionButtons(reticle.matrix);
 
-                // Activate speech recognition
-                recognition.start();
-                console.log('Speech recognition started.');
+                if (!hasSpoken) {
+                    fetchRandomQuestion().then(() => {
+                        speakText(question);
+                        setupSpeechRecognition();
+                    });
+                    hasSpoken = true;
+                }
             }
+        }
+
+        function createButtons() {
+            const buttonGeometry = new THREE.BoxGeometry(0.1, 0.05, 0.01);
+            const buttonMaterial = new THREE.MeshBasicMaterial({ color: 0x0000ff });
+
+            increaseButton = new THREE.Mesh(buttonGeometry, buttonMaterial);
+            decreaseButton = new THREE.Mesh(buttonGeometry, buttonMaterial);
+            rotateLeftButton = new THREE.Mesh(buttonGeometry, buttonMaterial);
+            rotateRightButton = new THREE.Mesh(buttonGeometry, buttonMaterial);
+
+            increaseButton.name = 'increase';
+            decreaseButton.name = 'decrease';
+            rotateLeftButton.name = 'rotateLeft';
+            rotateRightButton.name = 'rotateRight';
+
+            scene.add(increaseButton);
+            scene.add(decreaseButton);
+            scene.add(rotateLeftButton);
+            scene.add(rotateRightButton);
+
+            setButtonVisibility(false);
+
+            // Add click event listeners for buttons
+            increaseButton.addEventListener('click', () => adjustScale(1.1));
+            decreaseButton.addEventListener('click', () => adjustScale(0.9));
+            rotateLeftButton.addEventListener('click', () => rotateModel(-Math.PI / 16));
+            rotateRightButton.addEventListener('click', () => rotateModel(Math.PI / 16));
+        }
+
+        function setButtonVisibility(visible) {
+            increaseButton.visible = visible;
+            decreaseButton.visible = visible;
+            rotateLeftButton.visible = visible;
+            rotateRightButton.visible = visible;
+        }
+
+        function positionButtons(matrix) {
+            const position = new THREE.Vector3();
+            position.setFromMatrixPosition(matrix);
+
+            const offset = 0.2;
+
+            increaseButton.position.set(position.x - offset, position.y, position.z);
+            decreaseButton.position.set(position.x + offset, position.y, position.z);
+            rotateLeftButton.position.set(position.x, position.y, position.z - offset);
+            rotateRightButton.position.set(position.x, position.y, position.z + offset);
+        }
+
+        function adjustScale(factor) {
+            currentScale *= factor;
+            model.scale.set(currentScale, currentScale, currentScale);
+        }
+
+        function rotateModel(angle) {
+            model.rotation.y += angle;
         }
 
         function animate() {
@@ -292,57 +306,56 @@ output
         }
 
         function render(timestamp, frame) {
-            if (frame) {
-                const referenceSpace = renderer.xr.getReferenceSpace();
-                const session = renderer.xr.getSession();
+            if (model) {
+                mixer.update(0.01);
+            }
 
-                if (hitTestSourceRequested === false) {
-                    session.requestReferenceSpace('viewer').then(function(referenceSpace) {
-                        session.requestHitTestSource({ space: referenceSpace }).then(function(source) {
+            if (hitTestSourceRequested === false) {
+                const session = renderer.xr.getSession();
+                if (session) {
+                    session.requestReferenceSpace('viewer').then(referenceSpace => {
+                        session.requestHitTestSource({ space: referenceSpace }).then(source => {
                             hitTestSource = source;
                         });
                     });
 
-                    session.addEventListener('end', function() {
+                    session.addEventListener('end', () => {
                         hitTestSourceRequested = false;
                         hitTestSource = null;
                     });
 
                     hitTestSourceRequested = true;
                 }
+            }
 
-                if (hitTestSource) {
+            if (hitTestSource && frame) {
+                const referenceSpace = renderer.xr.getReferenceSpace();
+                const viewerPose = frame.getViewerPose(referenceSpace);
+
+                if (viewerPose) {
                     const hitTestResults = frame.getHitTestResults(hitTestSource);
 
                     if (hitTestResults.length > 0) {
                         const hit = hitTestResults[0];
                         reticle.visible = true;
                         reticle.matrix.fromArray(hit.getPose(referenceSpace).transform.matrix);
-
-                        if (model) {
-                            model.position.setFromMatrixPosition(reticle.matrix);
-                        }
                     } else {
                         reticle.visible = false;
                     }
                 }
             }
 
-            if (mixer) {
-                mixer.update(0.01);
-            }
-
             renderer.render(scene, camera);
         }
 
-        window.addEventListener('resize', function() {
-            camera.aspect = window.innerWidth / window.innerHeight;
-            camera.updateProjectionMatrix();
-            renderer.setSize(window.innerWidth, window.innerHeight);
-        });
-
-        init();
-        animate();
+        function speakText(text) {
+            const speech = new SpeechSynthesisUtterance(text);
+            speech.lang = 'en-US';
+            speech.volume = 1;
+            speech.rate = 1;
+            speech.pitch = 1;
+            window.speechSynthesis.speak(speech);
+        }
     </script>
 </body>
 </html>
