@@ -233,6 +233,9 @@
 
             createButtons();
             window.addEventListener('resize', onWindowResize, false);
+
+
+
         }
 
         function onSelect() {
@@ -253,73 +256,78 @@
         }
 
         function createButtons() {
-            increaseButton = createButton('+', increaseScale);
-            decreaseButton = createButton('-', decreaseScale);
-            rotateLeftButton = createButton('⟲', rotateLeft);
-            rotateRightButton = createButton('⟳', rotateRight);
-            setButtonVisibility(false);
+            const buttonGeometry = new THREE.BoxGeometry(0.1, 0.05, 0.01);
+            const increaseMaterial = new THREE.MeshBasicMaterial({ color: 0x00ff00 });
+            const decreaseMaterial = new THREE.MeshBasicMaterial({ color: 0xff0000 });
+            const rotateLeftMaterial = new THREE.MeshBasicMaterial({ color: 0x0000ff });
+            const rotateRightMaterial = new THREE.MeshBasicMaterial({ color: 0xffff00 });
+
+            increaseButton = new THREE.Mesh(buttonGeometry, increaseMaterial);
+            increaseButton.visible = false; // Initially hide the button
+            increaseButton.userData = { isIncreaseButton: true };
+            scene.add(increaseButton);
+
+            decreaseButton = new THREE.Mesh(buttonGeometry, decreaseMaterial);
+            decreaseButton.visible = false; // Initially hide the button
+            decreaseButton.userData = { isDecreaseButton: true };
+            scene.add(decreaseButton);
+
+            rotateLeftButton = new THREE.Mesh(buttonGeometry, rotateLeftMaterial);
+            rotateLeftButton.visible = false; // Initially hide the button
+            rotateLeftButton.userData = { isRotateLeftButton: true };
+            scene.add(rotateLeftButton);
+
+            rotateRightButton = new THREE.Mesh(buttonGeometry, rotateRightMaterial);
+            rotateRightButton.visible = false; // Initially hide the button
+            rotateRightButton.userData = { isRotateRightButton: true };
+            scene.add(rotateRightButton);
         }
 
-        function createButton(label, onClick) {
-            const button = document.createElement('button');
-            button.textContent = label;
-            button.style.position = 'absolute';
-            button.style.display = 'none';
-            button.addEventListener('click', onClick);
-            document.body.appendChild(button);
-            return button;
-        }
-
+        
         function setButtonVisibility(visible) {
-            const display = visible ? 'block' : 'none';
-            increaseButton.style.display = display;
-            decreaseButton.style.display = display;
-            rotateLeftButton.style.display = display;
-            rotateRightButton.style.display = display;
-        }
-
-        function increaseScale() {
-            if (model) {
-                currentScale *= 1.1;
-                model.scale.set(currentScale, currentScale, currentScale);
-            }
-        }
-
-        function decreaseScale() {
-            if (model) {
-                currentScale /= 1.1;
-                model.scale.set(currentScale, currentScale, currentScale);
-            }
-        }
-
-        function rotateLeft() {
-            if (model) {
-                model.rotation.y += Math.PI / 8;
-            }
-        }
-
-        function rotateRight() {
-            if (model) {
-                model.rotation.y -= Math.PI / 8;
-            }
+            increaseButton.visible = visible;
+            decreaseButton.visible = visible;
+            rotateLeftButton.visible = visible;
+            rotateRightButton.visible = visible;
         }
 
         function positionButtons(matrix) {
-            const vector = new THREE.Vector3().setFromMatrixPosition(matrix).project(camera);
-            const x = (vector.x * 0.5 + 0.5) * window.innerWidth;
-            const y = (vector.y * -0.5 + 0.5) * window.innerHeight;
+            const position = new THREE.Vector3().setFromMatrixPosition(matrix);
+            increaseButton.position.copy(position);
+            increaseButton.position.y += 0.1; // Position the increase button above the model
+            increaseButton.position.x -= 0.1; // Position to the far left
 
-            increaseButton.style.left = `${x + 20}px`;
-            increaseButton.style.top = `${y}px`;
+            decreaseButton.position.copy(position);
+            decreaseButton.position.y += 0.1; // Position the decrease button above the model
+            decreaseButton.position.x += 0.1; // Position to the far right
 
-            decreaseButton.style.left = `${x - 50}px`;
-            decreaseButton.style.top = `${y}px`;
+            rotateLeftButton.position.copy(position);
+            rotateLeftButton.position.y += 0.25; // Position the rotate left button above the model
+            rotateLeftButton.position.x -= 0.05; // Position to the left
 
-            rotateLeftButton.style.left = `${x - 100}px`;
-            rotateLeftButton.style.top = `${y}px`;
+            rotateRightButton.position.copy(position);
+            rotateRightButton.position.y += 0.25; // Position the rotate right button above the model
+            rotateRightButton.position.x += 0.1; // Position to the right
+        }
 
-            rotateRightButton.style.left = `${x + 70}px`;
-            rotateRightButton.style.top = `${y}px`;
+        function onResizeButtonClick(increase) {
+            if (increase) {
+                currentScale += 0.01;
+            } else {
+                currentScale = Math.max(0.01, currentScale - 0.01);
+            }
+            if (model) {
+                model.scale.set(currentScale, currentScale, currentScale);
+                console.log('Resized model to scale:', currentScale);
+            }
+        }
+
+        function onRotateButtonClick(clockwise) {
+            if (model) {
+                const rotationAmount = clockwise ? -Math.PI / 8 : Math.PI / 8;
+                model.rotation.y += rotationAmount;
+                console.log('Rotated model by:', rotationAmount);
+            }
         }
 
         function onWindowResize() {
@@ -372,6 +380,36 @@
 
             renderer.render(scene, camera);
         }
+        document.addEventListener('click', (event) => {
+            const intersects = getIntersects(event.clientX, event.clientY);
+            if (intersects.length > 0) {
+                const object = intersects[0].object;
+                if (object.userData.isIncreaseButton) {
+                    onResizeButtonClick(true);
+                  
+                } else if (object.userData.isDecreaseButton) {
+                    onResizeButtonClick(false);
+                   
+                } else if (object.userData.isRotateLeftButton) {
+                    onRotateButtonClick(false);
+                  
+                } else if (object.userData.isRotateRightButton) {
+                    onRotateButtonClick(true);
+                    
+                }
+            }
+        });
+
+        function getIntersects(x, y) {
+            const mouse = new THREE.Vector2();
+            mouse.x = (x / window.innerWidth) * 2 - 1;
+            mouse.y = -(y / window.innerHeight) * 2 + 1;
+
+            const raycaster = new THREE.Raycaster();
+            raycaster.setFromCamera(mouse, camera);
+            return raycaster.intersectObjects([increaseButton, decreaseButton, rotateLeftButton, rotateRightButton]);
+        }
+
 
         init();
         animate();
