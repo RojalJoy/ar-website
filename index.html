@@ -185,6 +185,7 @@
         }
 
         function endInterview() {
+
             let feedback = "Interview complete!\n\nCorrect Answers:\n";
             correctAnswers.forEach(item => {
                 feedback += `Q: ${item.question}\nA: ${item.answer}\n\n`;
@@ -199,6 +200,7 @@
         }
 
         function endARExperience(feedback) {
+            speakText("Thank you for taking this interview .Here is your feedback ");
             console.log('Ending AR experience. Feedback:', feedback);
             if (renderer.xr.isPresenting) {
                 const session = renderer.xr.getSession();
@@ -207,7 +209,7 @@
             alert(feedback);
         }
 
-        let hasSpoken = false;
+  
         function init() {
             scene = new THREE.Scene();
             camera = new THREE.PerspectiveCamera(70, window.innerWidth / window.innerHeight, 0.1, 1000);
@@ -251,6 +253,7 @@
             reticle.matrixAutoUpdate = false;
             reticle.visible = false;
             scene.add(reticle);
+            createButtons();
 
             const onWindowResize = () => {
                 camera.aspect = window.innerWidth / window.innerHeight;
@@ -260,19 +263,103 @@
 
             window.addEventListener('resize', onWindowResize, false);
         }
+        let hasSpoken = false;
 
         function onSelect() {
             if (reticle.visible && model) {
                 model.position.setFromMatrixPosition(reticle.matrix);
                 model.visible = true;
-
+                reticle.visible = false;
+                setButtonVisibility(true);
+                positionButtons(reticle.matrix);
                 // Start the interview process after placing the model
                 if (!hasSpoken) {
+                    speakText("Starting Your Mock Interview");
                     fetchRandomQuestion();
                     setupSpeechRecognition();
                     hasSpoken = true;
                 }
             }
+        }
+        function createButtons() {
+            const buttonGeometry = new THREE.BoxGeometry(0.1, 0.05, 0.01);
+            const increaseMaterial = new THREE.MeshBasicMaterial({ color: 0x00ff00 });
+            const decreaseMaterial = new THREE.MeshBasicMaterial({ color: 0xff0000 });
+            const rotateLeftMaterial = new THREE.MeshBasicMaterial({ color: 0x0000ff });
+            const rotateRightMaterial = new THREE.MeshBasicMaterial({ color: 0xffff00 });
+
+            increaseButton = new THREE.Mesh(buttonGeometry, increaseMaterial);
+            increaseButton.visible = false; // Initially hide the button
+            increaseButton.userData = { isIncreaseButton: true };
+            scene.add(increaseButton);
+
+            decreaseButton = new THREE.Mesh(buttonGeometry, decreaseMaterial);
+            decreaseButton.visible = false; // Initially hide the button
+            decreaseButton.userData = { isDecreaseButton: true };
+            scene.add(decreaseButton);
+
+            rotateLeftButton = new THREE.Mesh(buttonGeometry, rotateLeftMaterial);
+            rotateLeftButton.visible = false; // Initially hide the button
+            rotateLeftButton.userData = { isRotateLeftButton: true };
+            scene.add(rotateLeftButton);
+
+            rotateRightButton = new THREE.Mesh(buttonGeometry, rotateRightMaterial);
+            rotateRightButton.visible = false; // Initially hide the button
+            rotateRightButton.userData = { isRotateRightButton: true };
+            scene.add(rotateRightButton);
+        }
+
+        
+        function setButtonVisibility(visible) {
+            increaseButton.visible = visible;
+            decreaseButton.visible = visible;
+            rotateLeftButton.visible = visible;
+            rotateRightButton.visible = visible;
+        }
+
+        function positionButtons(matrix) {
+            const position = new THREE.Vector3().setFromMatrixPosition(matrix);
+            increaseButton.position.copy(position);
+            increaseButton.position.y += 0.1; // Position the increase button above the model
+            increaseButton.position.x -= 0.1; // Position to the far left
+
+            decreaseButton.position.copy(position);
+            decreaseButton.position.y += 0.1; // Position the decrease button above the model
+            decreaseButton.position.x += 0.1; // Position to the far right
+
+            rotateLeftButton.position.copy(position);
+            rotateLeftButton.position.y += 0.25; // Position the rotate left button above the model
+            rotateLeftButton.position.x -= 0.05; // Position to the left
+
+            rotateRightButton.position.copy(position);
+            rotateRightButton.position.y += 0.25; // Position the rotate right button above the model
+            rotateRightButton.position.x += 0.1; // Position to the right
+        }
+
+        function onResizeButtonClick(increase) {
+            if (increase) {
+                currentScale += 0.01;
+            } else {
+                currentScale = Math.max(0.01, currentScale - 0.01);
+            }
+            if (model) {
+                model.scale.set(currentScale, currentScale, currentScale);
+                console.log('Resized model to scale:', currentScale);
+            }
+        }
+
+        function onRotateButtonClick(clockwise) {
+            if (model) {
+                const rotationAmount = clockwise ? -Math.PI / 8 : Math.PI / 8;
+                model.rotation.y += rotationAmount;
+                console.log('Rotated model by:', rotationAmount);
+            }
+        }
+
+        function onWindowResize() {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
         }
 
         function animate() {
