@@ -106,6 +106,25 @@ console.log('Experience:', experience);
 
 // Use these variables to customize the AR experience
 
+// Setting the selected topic based on the role passed through the URL
+if (role) {
+    selectedTopic = role;
+    document.getElementById('start-ar-button').style.display = 'block';
+}
+
+// When the AR button is clicked, initialize the AR experience
+document.getElementById('start-ar-button').addEventListener('click', function() {
+    document.getElementById('topic-selection-container').style.display = 'none';
+    document.getElementById('ar-container').style.display = 'block';
+    init();
+    animate();
+});
+
+// Optionally, if you want to auto-start the AR experience if a role is provided in the URL
+if (selectedTopic) {
+    document.getElementById('start-ar-button').click();
+}
+
         function speakText(text) {
             const utterance = new SpeechSynthesisUtterance(text);
             window.speechSynthesis.speak(utterance);
