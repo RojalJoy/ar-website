@@ -91,7 +91,8 @@
         const incorrectAnswers = [];
         let selectedTopic = null;
 
-        const urlParams = new URLSearchParams(window.location.search);
+// Parsing URL parameters
+const urlParams = new URLSearchParams(window.location.search);
 const role = urlParams.get('role');
 const name = urlParams.get('name');
 const qualification = urlParams.get('qualification');
@@ -104,26 +105,29 @@ console.log('Qualification:', qualification);
 console.log('Skillset:', skillset);
 console.log('Experience:', experience);
 
-// Use these variables to customize the AR experience
-
-// Setting the selected topic based on the role passed through the URL
+// Hide the topic selection if the role is provided
 if (role) {
+    // Set the selected topic based on the role
     selectedTopic = role;
-    document.getElementById('start-ar-button').style.display = 'block';
-}
 
-// When the AR button is clicked, initialize the AR experience
-document.getElementById('start-ar-button').addEventListener('click', function() {
+    // Hide the topic selection container
     document.getElementById('topic-selection-container').style.display = 'none';
-    document.getElementById('ar-container').style.display = 'block';
-    init();
-    animate();
-});
 
-// Optionally, if you want to auto-start the AR experience if a role is provided in the URL
-if (selectedTopic) {
+    // Show the AR button and start the interview automatically
+    document.getElementById('start-ar-button').style.display = 'block';
+
+    // Start the AR experience and the interview for the selected role
+    document.getElementById('start-ar-button').addEventListener('click', function() {
+        document.getElementById('ar-container').style.display = 'block';
+        init();
+        animate();
+    });
+
+    // Automatically start the AR experience
     document.getElementById('start-ar-button').click();
 }
+
+
 
         function speakText(text) {
             const utterance = new SpeechSynthesisUtterance(text);
