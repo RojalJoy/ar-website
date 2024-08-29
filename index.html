@@ -135,7 +135,26 @@ if (role) {
         }
 
         function fetchRandomQuestion() {
-            const collection = selectedTopic === 'Data Analyst' ? "QnA" : "Web Developer";
+            let collectionName;
+
+            // Determine the collection based on the selected role
+            switch (selectedTopic) {
+                case 'Data Analyst':
+                    collectionName = 'QnA';
+                    break;
+                case 'Web Developer':
+                case 'Java Developer':
+                case 'Cloud Engineer':
+                case 'Backend Developer':
+                case 'Game Developer':
+                case 'Buisness Analyst(Power BI)':
+                case 'IOT Developer':
+                    collectionName = selectedTopic;
+                    break;
+                default:
+                    console.error('Invalid role selected:', selectedTopic);
+                    return;
+            } 
             db.collection(collection).get().then((querySnapshot) => {
                 const docs = querySnapshot.docs;
                 if (docs.length > 0) {
