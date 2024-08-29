@@ -131,51 +131,57 @@ if (role) {
 
 
         function speakText(text) {
-            const utterance = new SpeechSynthesisUtterance(text);
-            window.speechSynthesis.speak(utterance);
-        }
+                const utterance = new SpeechSynthesisUtterance(text);
+                window.speechSynthesis.speak(utterance);
+            }
 
-        function fetchRandomQuestion() {
-            let collectionName;
-
-            // Determine the collection based on the selected role
-            switch (selectedTopic) {
-                case 'Data Analyst':
-                    collectionName = 'QnA';
-                    break;
-                case 'Web Developer':
-                    collectionName = 'Web Developer';
-                    break;
-                case 'Java Developer':
-                    collectionName = 'Java Developer';
-                    break;  
-                case 'Cloud Engineer':
-                    collectionName = 'Cloud Engineer';
-                    break;            
-                case 'Backend Developer':
-                case 'Game Developer':
-                case 'Buisness Analyst(Power BI)':
-                case 'IOT Developer':
-                    collectionName = selectedTopic;
-                    break;
-                default:
-                    console.error('Invalid role selected:', selectedTopic);
-                    return;
-            } 
-            db.collection(collection).get().then((querySnapshot) => {
-                const docs = querySnapshot.docs;
-                if (docs.length > 0) {
-                    const randomDoc = docs[Math.floor(Math.random() * docs.length)];
-                    currentQuestion = randomDoc.data().Question;
-                    expectedAnswer = randomDoc.data().Answer;
-                    console.log('Random question:', currentQuestion);
-                    console.log('Expected answer:', expectedAnswer);
-                    speakText(currentQuestion);
+            function fetchRandomQuestion() {
+                let collection;
+                switch (selectedTopic) {
+                    case 'Web Developer':
+                        collection = 'Web Developer';
+                        break;
+                    case 'Java Developer':
+                        collection = 'Java Developer';
+                        break;
+                    case 'Data Analyst':
+                        collection = 'QnA';
+                        break;
+                    case 'Cloud Engineer':
+                        collection = 'Cloud Engineer';
+                        break;
+                    case 'Backend Developer':
+                        collection = 'Backend Developer';
+                        break;
+                    case 'Game Developer':
+                        collection = 'Game Developer';
+                        break;
+                    case 'Buisness Analyst(Power BI)':
+                        collection = 'Buisness Analyst(Power BI)';
+                        break;
+                    case 'IOT Developer':
+                        collection = 'IOT Developer';
+                        break;
+                    default:
+                        console.error('No matching collection for selected topic:', selectedTopic);
+                        return;
                 }
-            }).catch((error) => {
-                console.error("Error retrieving random question:", error);
-            });
-        }
+                
+                db.collection(collection).get().then((querySnapshot) => {
+                    const docs = querySnapshot.docs;
+                    if (docs.length > 0) {
+                        const randomDoc = docs[Math.floor(Math.random() * docs.length)];
+                        currentQuestion = randomDoc.data().Question;
+                        expectedAnswer = randomDoc.data().Answer;
+                        console.log('Random question:', currentQuestion);
+                        console.log('Expected answer:', expectedAnswer);
+                        speakText(currentQuestion);
+                    }
+                }).catch((error) => {
+                    console.error("Error retrieving random question:", error);
+                });
+            }
+
 
         function setupSpeechRecognition() {
             recognition = new (window.SpeechRecognition || window.webkitSpeechRecognition)();
