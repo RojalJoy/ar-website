@@ -135,28 +135,8 @@ if (role) {
         }
 
         function fetchRandomQuestion() {
-            let collectionName;
-
-            // Determine the collection based on the selected role
-            switch (selectedTopic) {
-                case 'Data Analyst':
-                    collectionName = 'QnA';
-                    break;
-                case 'Web Developer':
-                case 'Java Developer':
-                case 'Cloud Engineer':
-                case 'Backend Developer':
-                case 'Game Developer':
-                case 'Buisness Analyst(Power BI)':
-                case 'IOT Developer':
-                    collectionName = selectedTopic;
-                    break;
-                default:
-                    console.error('Invalid role selected:', selectedTopic);
-                    return;
-            }
-
-            db.collection(collectionName).get().then((querySnapshot) => {
+            const collection = selectedTopic === 'Data Analyst' ? "QnA" : "Web Developer";
+            db.collection(collection).get().then((querySnapshot) => {
                 const docs = querySnapshot.docs;
                 if (docs.length > 0) {
                     const randomDoc = docs[Math.floor(Math.random() * docs.length)];
@@ -165,8 +145,6 @@ if (role) {
                     console.log('Random question:', currentQuestion);
                     console.log('Expected answer:', expectedAnswer);
                     speakText(currentQuestion);
-                } else {
-                    console.error('No questions found in the selected collection.');
                 }
             }).catch((error) => {
                 console.error("Error retrieving random question:", error);
