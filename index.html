@@ -236,7 +236,7 @@ if (role) {
 
             const similarityScore = calculateSimilarity(userAnswer, expectedAnswer);
             console.log('Similarity score:', similarityScore);
-            if (similarityScore > 0.5) {
+            if (similarityScore > 0.45) {
                 correctAnswers.push({ question: currentQuestion, answer: userAnswer });
             } else {
                 incorrectAnswers.push({ question: currentQuestion, answer: userAnswer });
