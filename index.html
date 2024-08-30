@@ -445,6 +445,15 @@ if (role) {
                 }
             }
         });
+        function getIntersects(x, y) {
+            const mouse = new THREE.Vector2();
+            mouse.x = (x / window.innerWidth) * 2 - 1;
+            mouse.y = -(y / window.innerHeight) * 2 + 1;
+
+            const raycaster = new THREE.Raycaster();
+            raycaster.setFromCamera(mouse, camera);
+            return raycaster.intersectObjects([increaseButton, decreaseButton, rotateLeftButton, rotateRightButton]);
+        }
 
         function onWindowResize() {
             camera.aspect = window.innerWidth / window.innerHeight;
