@@ -426,6 +426,26 @@ if (role) {
             }
         }
 
+ document.addEventListener('click', (event) => {
+            const intersects = getIntersects(event.clientX, event.clientY);
+            if (intersects.length > 0) {
+                const object = intersects[0].object;
+                if (object.userData.isIncreaseButton) {
+                    onResizeButtonClick(true);
+                  
+                } else if (object.userData.isDecreaseButton) {
+                    onResizeButtonClick(false);
+                   
+                } else if (object.userData.isRotateLeftButton) {
+                    onRotateButtonClick(false);
+                  
+                } else if (object.userData.isRotateRightButton) {
+                    onRotateButtonClick(true);
+                    
+                }
+            }
+        });
+
         function onWindowResize() {
             camera.aspect = window.innerWidth / window.innerHeight;
             camera.updateProjectionMatrix();
